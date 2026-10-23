@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
-st.set_page_config(page_title='ObraVision | Inteligência Financeira', page_icon='🏗️', layout='wide', initial_sidebar_state='expanded')
+sst.write("TESTE: O STREAMLIT ESTÁ EXECUTANDO O CÓDIGO")page_title='ObraVision | Inteligência Financeira', page_icon='🏗️', layout='wide', initial_sidebar_state='expanded')
 NAVY='#14243A'; BLUE='#2563EB'; CYAN='#06B6D4'; GREEN='#0F9F79'; RED='#E05252'; GOLD='#E7A83E'; MUTED='#64748B'; BG='#F4F7FB'
 st.markdown('''<style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
