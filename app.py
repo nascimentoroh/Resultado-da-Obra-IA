@@ -8,7 +8,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 try:
-    from openai import AzureOpenAI
+    from openai import OpenAI
     HAS_OPENAI = True
 except ImportError:
     HAS_OPENAI = False
@@ -73,13 +73,13 @@ st.title("🏗️ ObraVision | Inteligência de Custos e Resultados")
 st.caption("Portfólio de controladoria • 8 obras de pavimentação • Simulação fictícia • Integre com Microsoft Foundry")
 
 # Barra lateral
-st.sidebar.header("⚙️ Painel de Controle")
+st.sidebar.header("⚙️ Painel de Controlo")
 base = dados_base()
 nomes = base["Obra"].drop_duplicates().tolist()
 selecionadas = st.sidebar.multiselect("Obras analisadas", nomes, default=nomes)
 
 if not selecionadas:
-    st.warning("Selecione ao menos uma obra.")
+    st.warning("Selecione pelo menos uma obra.")
     st.stop()
 
 st.sidebar.divider()
@@ -93,10 +93,10 @@ preco_outros = st.sidebar.slider("Variação futura dos demais custos (%)", -30,
 produtividade = st.sidebar.slider("Eficiência operacional futura (%)", -20, 20, 0, 1, help="Valor positivo reduz os custos futuros; negativo aumenta.")
 
 st.sidebar.divider()
-st.sidebar.subheader("🔑 Conexão Microsoft Foundry / Azure AI")
-minha_chave = st.sidebar.text_input("Chave da API (minha_chave)", type="password", help="Chave de acesso do Azure OpenAI / Foundry")
-meu_endpoint = st.sidebar.text_input("Endpoint (meu_endpoint)", placeholder="https://seu-recurso.openai.azure.com/")
-meu_modelo = st.sidebar.text_input("Nome do Modelo / Deployment (meu_modelo)", placeholder="gpt-4o")
+st.sidebar.subheader("🔑 Conexão Microsoft Foundry / AI")
+minha_chave = st.sidebar.text_input("Chave da API (minha_chave)", type="password", help="Chave de acesso")
+meu_endpoint = st.sidebar.text_input("Endpoint (meu_endpoint)", placeholder="https://.../openai/v1")
+meu_modelo = st.sidebar.text_input("Nome do Modelo / Deployment (meu_modelo)", placeholder="gpt-4.1-mini")
 
 fat = {
     "Combustíveis": 1 + preco_comb / 100,
@@ -147,7 +147,7 @@ aba1, aba2, aba3, aba4, aba5 = st.tabs([
 ])
 
 with aba1:
-    st.subheader("Visão executiva | realizado até a data-base simulada")
+    st.subheader("Visão executiva | realizado até à data-base simulada")
     a, b, c, d = st.columns(4)
     a.metric("Receita gerencial estimada", moeda(atual_receita))
     b.metric("Custo realizado", moeda(atual_custo))
@@ -224,7 +224,7 @@ with aba4:
         **{c: "{:,.2f}" for c in ["Receita contratada", "Orçamento total", "Orçado até a etapa", "Custo realizado", "Desvio atual (R$)", "Resultado gerencial atual", "Custo final cenário", "Receita final cenário", "Resultado final cenário", "Custo por m² executado"]}
     }), use_container_width=True, hide_index=True)
     
-    st.download_button("⬇️ Baixar resumo CSV", res.to_csv(index=False, sep=";", decimal=",").encode("utf-8-sig"), "obras_resumo.csv", "text/csv")
+    st.download_button("⬇️ Descarregar resumo CSV", res.to_csv(index=False, sep=";", decimal=",").encode("utf-8-sig"), "obras_resumo.csv", "text/csv")
 
 with aba5:
     st.subheader("🤖 Assistente de Controladoria com IA (Microsoft Foundry)")
@@ -241,19 +241,18 @@ with aba5:
             if not pergunta.strip():
                 st.warning("Por favor, digite uma pergunta.")
             else:
-                with st.spinner("Analisando dados do portfólio..."):
+                with st.spinner("A analisar dados do portfólio..."):
                     try:
-                        client = AzureOpenAI(
-                            azure_endpoint=meu_endpoint,
-                            api_key=minha_chave,
-                            api_version="2024-02-01"
+                        # Correção aplicada: Utilização da classe OpenAI com base_url para o endpoint services.ai.azure.com
+                        client = OpenAI(
+                            base_url=meu_endpoint,
+                            api_key=minha_chave
                         )
                         
-                        # Prepara o contexto dos dados em formato markdown
                         resumo_texto = res[["ID", "Obra", "Avanço físico", "Desvio atual (%)", "Resultado final cenário", "Situação"]].to_markdown(index=False)
                         
-                        prompt_sistema = f"""Você é um especialista em controladoria de obras e engenharia civil.
-Sua tarefa é analisar os dados financeiros e operacionais do portfólio abaixo e responder às dúvidas do gestor de forma concisa, técnica e direta.
+                        prompt_sistema = f"""És um especialista em controladoria de obras e engenharia civil.
+A tua tarefa é analisar os dados financeiros e operacionais do portfólio abaixo e responder às dúvidas do gestor de forma concisa, técnica e direta.
 
 Dados atuais do portfólio:
 {resumo_texto}
@@ -277,7 +276,7 @@ Premissas simuladas:
                         st.markdown("### 💬 Resposta do Assistente")
                         st.write(resposta.choices[0].message.content)
                     except Exception as e:
-                        st.error(f"Erro na conexão com a API do Microsoft Foundry / Azure OpenAI: {str(e)}")
+                        st.error(f"Erro na conexão com o Microsoft Foundry: {str(e)}")
 
 st.divider()
 st.caption("ObraVision • Python, Streamlit e IA Generativa")
