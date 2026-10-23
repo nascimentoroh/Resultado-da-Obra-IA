@@ -1,96 +1,96 @@
+import io
+import re
+import unicodedata
+import numpy as np
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
-from openai import OpenAI
+from plotly.subplots import make_subplots
 
-st.set_page_config(page_title='Gestão Financeira de Obras', page_icon='🏗️', layout='wide')
+st.set_page_config(page_title='ObraVision | Inteligência Financeira', page_icon='🏗️', layout='wide', initial_sidebar_state='expanded')
+NAVY='#14243A'; BLUE='#2563EB'; CYAN='#06B6D4'; GREEN='#0F9F79'; RED='#E05252'; GOLD='#E7A83E'; MUTED='#64748B'; BG='#F4F7FB'
+st.markdown('''<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+html,body,[class*="css"],.stApp {font-family:Inter, sans-serif;}
+.stApp {background:#F4F7FB;color:#14243A;}
+.block-container {padding-top:1.5rem;padding-bottom:3rem;max-width:1550px;}
+[data-testid="stSidebar"] {background:#14243A;}
+[data-testid="stSidebar"] * {color:#ECF3FF!important;}
+[data-testid="stSidebar"] input {color:#14243A!important;}
+[data-testid="stSidebar"] [data-baseweb="select"] * {color:#14243A!important;}
+h1,h2,h3 {color:#14243A!important;letter-spacing:-.025em;}
+.hero {padding:23px 29px;background:linear-gradient(105deg,#14243A,#214F85);border-radius:18px;color:white;margin-bottom:20px;box-shadow:0 9px 28px #14243A18;}
+.hero h1 {color:white!important;font-size:2rem;margin:0 0 5px 0;}
+.hero p {color:#D5E4F5;margin:0;}
+.kpi {background:white;border:1px solid #E5ECF4;border-radius:15px;padding:19px 20px;box-shadow:0 4px 16px #14243A0A;min-height:135px;}
+.kpi-label {font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:#64748B;font-weight:700;}
+.kpi-value {font-size:clamp(19px,2vw,29px);font-weight:800;color:#14243A;margin-top:11px;white-space:nowrap;}
+.kpi-foot {font-size:12px;color:#64748B;margin-top:8px;}
+.section-title {font-weight:800;font-size:1.18rem;color:#14243A;margin:23px 0 10px;}
+.note {padding:12px 16px;background:#E9F1FF;border-left:4px solid #2563EB;border-radius:8px;color:#284568;}
+[data-testid="stPlotlyChart"] {background:white;border:1px solid #E5ECF4;border-radius:15px;padding:6px;box-shadow:0 4px 16px #14243A08;}
+[data-testid="stMetric"] {background:white;padding:14px;border-radius:12px;}
+</style>''', unsafe_allow_html=True)
 
+COLS=['Obra','Receita','Custo operacional','Combustível','Manutenção','Frota']
 @st.cache_data
-def dados_exemplo():
-    nomes = [f'Obra {i:02d}' for i in range(1, 9)]
-    receitas = [850000, 1120000, 760000, 1400000, 930000, 1210000, 680000, 1580000]
-    custos = [620000, 940000, 590000, 1090000, 810000, 970000, 610000, 1320000]
-    combustivel = [42000, 57000, 38000, 69000, 49000, 60000, 35000, 75000]
-    manutencao = [18000, 23000, 17000, 32000, 22000, 27000, 16000, 36000]
-    frota = [35000, 44000, 32000, 54000, 39000, 48000, 30000, 62000]
-    return pd.DataFrame({'Obra': nomes, 'Receita': receitas, 'Custo operacional': custos,
-                         'Combustível': combustivel, 'Manutenção': manutencao, 'Frota': frota})
+def sample():
+    return pd.DataFrame({'Obra':[f'Obra {i:02d}' for i in range(1,9)],'Receita':[850000,1120000,760000,1400000,930000,1210000,680000,1580000], 'Custo operacional':[620000,940000,590000,1090000,810000,970000,610000,1320000], 'Combustível':[42000,57000,38000,69000,49000,60000,35000,75000], 'Manutenção':[18000,23000,17000,32000,22000,27000,16000,36000], 'Frota':[35000,44000,32000,54000,39000,48000,30000,62000]})
 
-st.title('🏗️ Gestão Financeira de Obras')
-st.caption('Demonstração com dados fictícios. Substitua ou carregue sua própria base de dados.')
+def money(x,short=False):
+    if short:
+        a=abs(x)
+        if a>=1e6:return ('-' if x<0 else '')+'R$ '+f'{a/1e6:.2f}'.replace('.',',')+' mi'
+        if a>=1e3:return ('-' if x<0 else '')+'R$ '+f'{a/1e3:.0f}'.replace('.',',')+' mil'
+    return 'R$ '+f'{x:,.2f}'.replace(',','X').replace('.',',').replace('X','.')
+
+def pct(x):return f'{x:.2f}%'.replace('.',',')
+
+def prep(d):
+    d=d.copy()
+    d['Custo total']=d[['Custo operacional','Combustível','Manutenção','Frota']].sum(axis=1)
+    d['Resultado']=d['Receita']-d['Custo total']
+    d['Margem (%)']=np.where(d['Receita']>0,d['Resultado']/d['Receita']*100,0)
+    d['Status']=np.select([d['Resultado']<0,d['Margem (%)']<8],['Prejuízo','Atenção'],default='Saudável')
+    return d
+
+def layout(fig,height=360):
+    fig.update_layout(height=height,margin=dict(l=20,r=20,t=45,b=25),paper_bgcolor='white',plot_bgcolor='white',font=dict(family='Inter, Arial',color=NAVY,size=12),legend=dict(orientation='h',y=-.25,x=0),hovermode='x unified')
+    fig.update_xaxes(showgrid=False,zeroline=False)
+    fig.update_yaxes(gridcolor='#E9EEF6',zeroline=False,tickformat=',.0f')
+    return fig
+
+def kpi(title,value,foot,color=NAVY):
+    st.markdown(f'<div class="kpi"><div class="kpi-label">{title}</div><div class="kpi-value" style="color:{color}">{value}</div><div class="kpi-foot">{foot}</div></div>',unsafe_allow_html=True)
+
+def normalize(s):return ''.join(c for c in unicodedata.normalize('NFKD',s.lower()) if not unicodedata.combining(c))
+
+def assistant(question,d):
+    q=normalize(question)
+    if not q.strip():return 'Digite uma pergunta para iniciar a análise.'
+    worst=d.loc[d['Resultado'].idxmin()]; best=d.loc[d['Margem (%)'].idxmax()]
+    total=d['Receita'].sum();cost=d['Custo total'].sum();res=total-cost
+    if any(x in q for x in ['prejuizo','negativ','pior obra','pior resultado']):
+        bad=d[d['Resultado']<0].sort_values('Resultado')
+        return ('Obras com prejuízo: '+ '; '.join(f"{r['Obra']}: {money(r['Resultado'])}" for _,r in bad.iterrows()) if len(bad) else f"Nenhuma obra selecionada apresenta prejuízo. O menor resultado é {worst['Obra']}: {money(worst['Resultado'])}.")
+    if any(x in q for x in ['melhor margem','mais rentavel','maior margem']):return f"{best['Obra']} apresenta a maior margem: {pct(best['Margem (%)'])}, com resultado de {money(best['Resultado'])}."
+    if any(x in q for x in ['combustivel','diesel']):
+        nums=re.findall(r'(\d+(?:[.,]\d+)?)\s*%',q)
+        if nums:
+            n=float(nums[0].replace(',','.')); delta=d['Combustível'].sum()*n/100
+            return f"Com aumento de {pct(n)} no combustível, o custo sobe {money(delta)} e o resultado consolidado cai de {money(res)} para {money(res-delta)}."
+        return f"O gasto de combustível soma {money(d['Combustível'].sum())}, equivalente a {pct(d['Combustível'].sum()/cost*100 if cost else 0)} dos custos totais."
+    if any(x in q for x in ['custo','despesa','frota','manutencao']):
+        fields=['Custo operacional','Combustível','Manutenção','Frota']; field=max(fields,key=lambda x:d[x].sum())
+        return f"O maior grupo de custos é {field}: {money(d[field].sum())}. O custo total é {money(cost)}, representando {pct(cost/total*100 if total else 0)} da receita."
+    if any(x in q for x in ['risco','atencao','alerta']):
+        risky=d[d['Status']!='Saudável'].sort_values('Margem (%)')
+        return ('Obras que exigem atenção (margem abaixo de 8% ou prejuízo): '+', '.join(f"{r['Obra']} ({pct(r['Margem (%)'])})" for _,r in risky.iterrows()) if len(risky) else 'Todas as obras selecionadas estão acima do limite de atenção de 8% e apresentam resultado positivo.')
+    if any(x in q for x in ['resultado','lucro','receita','margem','resumo','analise']):return f"Receita: {money(total)}; custos: {money(cost)}; resultado: {money(res)}; margem: {pct(res/total*100 if total else 0)}. Melhor margem: {best['Obra']} ({pct(best['Margem (%)'])})."
+    return 'Posso analisar resultado, margem, custos, combustível, prejuízos e riscos. Exemplos: “Qual obra tem a melhor margem?”, “Há obras com prejuízo?” ou “E se o combustível subir 15%?”. Este assistente usa regras financeiras, não um modelo generativo.'
 
 with st.sidebar:
-    st.header('🔐 Microsoft Foundry')
-    st.caption('Credenciais utilizadas apenas nesta sessão; não são salvas no repositório.')
-    chave = st.text_input('Minha chave', type='password', placeholder='Cole a chave de API')
-    endpoint = st.text_input('Meu endpoint', placeholder='https://seu-recurso.services.ai.azure.com/openai/v1')
-    modelo = st.text_input('Meu modelo', value='gpt-4.1-mini')
-    if st.button('Testar conexão', use_container_width=True):
-        if not all([chave.strip(), endpoint.strip(), modelo.strip()]):
-            st.error('Preencha os três campos.')
-        elif not endpoint.strip().startswith('https://'):
-            st.error('O endpoint deve começar com https://.')
-        else:
-            try:
-                cliente = OpenAI(api_key=chave.strip(), base_url=endpoint.strip().rstrip('/') + '/', timeout=20.0)
-                cliente.chat.completions.create(model=modelo.strip(), messages=[{'role': 'user', 'content': 'Responda apenas OK.'}], max_tokens=10)
-                st.success('Conexão validada!')
-            except Exception as exc:
-                st.error(f'Falha ao conectar: {type(exc).__name__}. Verifique endpoint, chave, implantação e permissões.')
+    st.markdown('## 🏗️ ObraVision')
+    st.caption('CONTROLADORIA • BUSINESS INTELLIGENCE')
     st.divider()
-    arquivo = st.file_uploader('Importar dados de obras (CSV)', type=['csv'])
-
-if arquivo is not None:
-    try:
-        df = pd.read_csv(arquivo)
-        colunas = ['Obra', 'Receita', 'Custo operacional', 'Combustível', 'Manutenção', 'Frota']
-        if not set(colunas).issubset(df.columns):
-            st.error('CSV inválido. Colunas necessárias: ' + ', '.join(colunas))
-            st.stop()
-        df = df[colunas].copy()
-        for coluna in colunas[1:]:
-            df[coluna] = pd.to_numeric(df[coluna], errors='raise')
-        if df[colunas[1:]].isna().any().any():
-            raise ValueError('Existem valores vazios nas colunas numéricas.')
-    except Exception:
-        st.error('Não foi possível interpretar o CSV. Use números sem símbolos monetários e separador de colunas por vírgula.')
-        st.stop()
-else:
-    df = dados_exemplo()
-
-obras = st.multiselect('Selecionar obras', df['Obra'].unique().tolist(), default=df['Obra'].unique().tolist())
-base = df[df['Obra'].isin(obras)].copy()
-if base.empty:
-    st.info('Selecione pelo menos uma obra.')
-    st.stop()
-
-base['Custo total'] = base[['Custo operacional', 'Combustível', 'Manutenção', 'Frota']].sum(axis=1)
-base['Resultado'] = base['Receita'] - base['Custo total']
-base['Margem (%)'] = (base['Resultado'] / base['Receita'].replace(0, float('nan')) * 100).fillna(0)
-
-receita_total = base['Receita'].sum()
-custo_total = base['Custo total'].sum()
-resultado_total = receita_total - custo_total
-margem = resultado_total / receita_total * 100 if receita_total else 0
-fmt = lambda valor: f'R$ {valor:,.2f}'.replace(',', 'X').replace('.', ',').replace('X', '.')
-
-col1, col2, col3, col4 = st.columns(4)
-col1.metric('Receita', fmt(receita_total))
-col2.metric('Custo total', fmt(custo_total))
-col3.metric('Resultado', fmt(resultado_total))
-col4.metric('Margem', f'{margem:.2f}%')
-
-st.subheader('Resultado por obra')
-st.bar_chart(base.set_index('Obra')[['Receita', 'Custo total', 'Resultado']])
-st.dataframe(base, use_container_width=True, hide_index=True)
-
-st.subheader('📈 Simulador de cenários')
-a, b, c = st.columns(3)
-var_receita = a.slider('Variação de receita (%)', -50, 50, 0)
-var_combustivel = b.slider('Variação do combustível (%)', -50, 100, 0)
-var_outros = c.slider('Variação dos demais custos (%)', -50, 100, 0)
-receita_projetada = receita_total * (1 + var_receita / 100)
-combustivel_atual = base['Combustível'].sum()
-outros_custos = custo_total - combustivel_atual
-custo_projetado = combustivel_atual * (1 + var_combustivel / 100) + outros_custos * (1 + var_outros / 100)
-resultado_projetado = receita_projetada - custo_projetado
-margem_projetada = resultado_projetado / receita_projetada * 100 if receita_projetada else 0
