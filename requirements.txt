@@ -1,5 +1,3 @@
-streamlit
-pandas
-plotly
-openpyxl
-openai
+streamlit>=1.39,<2
+pandas>=2.2,<3
+openai>=1.60,<3
