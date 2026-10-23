@@ -14,16 +14,11 @@ TEAL = "#0D9488"
 RED = "#DC3545"
 BG = "#F3F6FB"
 
+# Estilo restrito: evita sobrescrever componentes internos do Streamlit.
 st.markdown("""<style>
-.stApp {background:#F3F6FB;color:#14253D}
-[data-testid="stSidebar"] {background:#14253D}
-[data-testid="stSidebar"] * {color:#F5F8FF}
-[data-testid="stSidebar"] input {color:#14253D!important}
-[data-testid="stMetric"] {background:white;border:1px solid #E2E8F0;border-radius:14px;padding:18px;box-shadow:0 4px 14px #1D35570A}
-[data-testid="stMetricLabel"] {font-size:14px}
-[data-testid="stMetricValue"] {font-size:27px}
-.block-container {padding-top:2rem;max-width:1500px}
-h1,h2,h3 {color:#14253D}
+.stApp {background-color:#F4F7FC;}
+.block-container {padding-top:1.5rem;max-width:1500px;}
+[data-testid="stMetric"] {background-color:#FFFFFF;border:1px solid #E1E8F1;border-radius:12px;padding:14px;}
 </style>""", unsafe_allow_html=True)
 
 @st.cache_data
@@ -76,7 +71,7 @@ def calcular(df):
     d = df.copy()
     d["Custo total"] = d[["Custo operacional", "Combustível", "Manutenção", "Frota"]].sum(axis=1)
     d["Resultado"] = d["Receita"] - d["Custo total"]
-    d["Margem (%)"] = np.where(d["Receita"] > 0, d["Resultado"] / d["Receita"] * 100, 0.0)
+    d["Margem (%)"] = (d["Resultado"] / d["Receita"].replace(0, np.nan) * 100).fillna(0)
     return d
 
 def grafico_layout(fig, height=360, pct=False):
@@ -94,3 +89,7 @@ def chart_receita(d):
 
 def chart_margem(d):
     d=d.sort_values("Margem (%)")
+    f=go.Figure(go.Bar(x=d["Margem (%)"],y=d["Obra"],orientation="h", marker_color=[TEAL if x>=10 else ("#F59E0B" if x>=0 else RED) for x in d["Margem (%)"]], text=[f"{x:.1f}%" for x in d["Margem (%)"]], textposition="outside", cliponaxis=False))
+    f.update_layout(title="Ranking de margem (%)", showlegend=False)
+    f.add_vline(x=10,line_dash="dot",line_color="#94A3B8")
+    return grafico_layout(f)
