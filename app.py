@@ -198,3 +198,157 @@ with aba4:
   st.info("Para exportar Excel, adicione openpyxl ao requirements.txt.")
 st.divider()
 st.caption("ObraVision • Projeto demonstrativo de Python, análise gerencial e controladoria • Dados e premissas fictícios. Valores não representam informações reais de construtoras.")
+
+# ============================================================
+# ASSISTENTE FINANCEIRO IA - OBRAVISION
+# ============================================================
+import json
+from openai import OpenAI
+
+st.divider()
+st.subheader("🤖 Assistente Financeiro IA")
+st.caption(
+    "Pergunte sobre custos, resultados, margens, desvios "
+    "e cenários das obras selecionadas."
+)
+
+# A chave deve ser cadastrada nos Secrets do Streamlit.
+if "OPENAI_API_KEY" not in st.secrets:
+    st.warning(
+        "Para ativar a IA, configure OPENAI_API_KEY "
+        "nos Secrets do ambiente de hospedagem."
+    )
+else:
+    if "obravision_chat" not in st.session_state:
+        st.session_state.obravision_chat = []
+
+    col_chat, col_limpar = st.columns([5, 1])
+
+    with col_limpar:
+        if st.button("Limpar conversa", key="limpar_obravision"):
+            st.session_state.obravision_chat = []
+            st.rerun()
+
+    # Exibe o histórico da conversa.
+    for msg in st.session_state.obravision_chat:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    pergunta = st.chat_input(
+        "Ex.: qual obra tem o maior desvio orçamentário?"
+    )
+
+    if pergunta:
+        st.session_state.obravision_chat.append({
+            "role": "user",
+            "content": pergunta
+        })
+
+        with st.chat_message("user"):
+            st.markdown(pergunta)
+
+        # Dados calculados pelo sistema, respeitando os filtros
+        # e as premissas atuais do simulador.
+        dados_obras = res[
+            [
+                "ID", "Obra", "Área (m²)",
+                "Receita contratada", "Orçamento total",
+                "Avanço físico", "Avanço financeiro",
+                "Custo realizado categoria",
+                "Desvio atual (R$)", "Desvio atual (%)",
+                "Resultado gerencial atual",
+                "Custo final cenário",
+                "Receita final cenário",
+                "Resultado final cenário",
+                "Margem final cenário (%)",
+                "Custo por m² executado", "Situação"
+            ]
+        ].to_dict(orient="records")
+
+        dados_categorias = x[
+            [
+                "ID", "Obra", "Categoria",
+                "Orçamento categoria",
+                "Custo realizado categoria",
+                "Custo futuro cenário",
+                "Custo final cenário"
+            ]
+        ].to_dict(orient="records")
+
+        contexto = {
+            "obras": dados_obras,
+            "custos_por_categoria": dados_categorias,
+            "premissas": {
+                "aditivo_receita_pct": aditivo,
+                "combustivel_pct": preco_comb,
+                "manutencao_pct": preco_manut,
+                "frota_pct": preco_frota,
+                "outros_custos_pct": preco_outros,
+                "produtividade_pct": produtividade
+            },
+            "observacao": (
+                "Dados inteiramente fictícios. "
+                "Valores financeiros em reais."
+            )
+        }
+
+        instrucoes = """
+        Você é o assistente financeiro do ObraVision,
+        especializado em controladoria de obras de pavimentação.
+
+        Responda em português brasileiro, de forma clara,
+        profissional e didática.
+
+        REGRAS IMPORTANTES:
+        1. Utilize os dados fornecidos pelo sistema.
+        2. Não invente números nem informações ausentes.
+        3. Diferencie valores realizados de valores projetados.
+        4. Apresente valores monetários em reais (R$).
+        5. Ao comparar obras, indique os nomes e os valores.
+        6. Explique os indicadores e suas limitações.
+        7. Se faltarem dados, diga isso explicitamente.
+        8. Considere as premissas atuais do simulador.
+        9. Não afirme que dados fictícios são dados reais.
+        10. Não confunda avanço físico com avanço financeiro.
+        11. Para cálculos financeiros, utilize os números
+            fornecidos e explicite as hipóteses utilizadas.
+        """
+
+        # Limita o histórico para controlar o tamanho da consulta.
+        historico = st.session_state.obravision_chat[-8:]
+
+        entrada = (
+            "DADOS ATUAIS DO OBRAVISION:\n"
+            + json.dumps(contexto, ensure_ascii=False, default=str)
+            + "\n\nCONVERSA RECENTE:\n"
+            + json.dumps(historico, ensure_ascii=False)
+            + "\n\nResponda à última pergunta do usuário."
+        )
+
+        try:
+            client = OpenAI(
+                api_key=st.secrets["OPENAI_API_KEY"]
+            )
+
+            with st.chat_message("assistant"):
+                with st.spinner("Analisando os dados das obras..."):
+                    resposta = client.responses.create(
+                        model="gpt-5.5",
+                        instructions=instrucoes,
+                        input=entrada
+                    )
+
+                    texto_resposta = resposta.output_text
+                    st.markdown(texto_resposta)
+
+            st.session_state.obravision_chat.append({
+                "role": "assistant",
+                "content": texto_resposta
+            })
+
+        except Exception:
+            st.error(
+                "Não foi possível consultar a IA. Verifique "
+                "a chave de API, o acesso ao modelo e a conexão. "
+                "Tente novamente em instantes."
+            )
